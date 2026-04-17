@@ -5,13 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>小恐龍進化 APP</title>
-    
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#e0f7fa">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
+    <title>小恐龍進化 APP - 圖片修復版</title>
     <style>
         * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { 
@@ -23,113 +17,89 @@
         }
 
         #game-container { 
-            position: relative; 
-            width: 100vw; height: 100vh; 
+            position: relative; width: 100vw; height: 100vh; 
             max-width: 800px; max-height: 400px;
-            background-color: white; 
-            border-bottom: 4px solid #535353; 
-            overflow: hidden; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            border-radius: 8px;
+            background-color: white; border-bottom: 4px solid #535353; 
+            overflow: hidden; border-radius: 8px;
         }
 
-        /* 恐龍實體 */
+        /* 核心物體：預設背景色確保「沒圖也能玩」 */
         #dino { 
             position: absolute; bottom: 0; left: 50px; 
             width: 44px; height: 47px; 
-            background-color: #535353; /* 圖片失效時的保險色 */
+            background-color: #535353; /* 沒圖時的顏色 */
             background-size: contain; background-repeat: no-repeat;
             z-index: 10; transition: filter 0.3s;
         }
         
-        /* 進化濾鏡 (取消無敵，僅視覺改變) */
+        /* 進化濾鏡 (無無敵) */
         .evo-gold { filter: drop-shadow(0 0 10px #FFD700) sepia(0.5) brightness(1.2); }
-        .evo-flame { 
-            filter: drop-shadow(0 0 15px #ff4757) hue-rotate(-20deg) saturate(2); 
-            animation: pulse 0.5s infinite alternate;
-        }
-        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+        .evo-flame { filter: drop-shadow(0 0 15px #ff4757) hue-rotate(-20deg) saturate(2); }
 
-        /* 障礙物與雲 */
         .obstacle { position: absolute; bottom: 0; z-index: 5; background-color: #535353; background-size: contain; background-repeat: no-repeat; }
         .bird { bottom: 85px; }
-        
-        .cloud { 
-            position: absolute; border-radius: 50px; z-index: 1; 
-            opacity: 0.6; animation: drift linear infinite; 
-        }
+        .cloud { position: absolute; border-radius: 50px; z-index: 1; opacity: 0.6; animation: drift linear infinite; }
         @keyframes drift { from { left: 110%; } to { left: -25%; } }
 
-        /* UI 層 */
-        #ui { 
-            position: absolute; top: 15px; width: 100%; 
-            display: flex; justify-content: space-between; padding: 0 20px; 
-            font-weight: bold; color: #535353; z-index: 20; pointer-events: none;
-        }
-        #msg { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            text-align: center; display: none; z-index: 30; 
-            background: rgba(255,255,255,0.95); padding: 30px; 
-            border-radius: 15px; border: 3px solid #535353;
-        }
-        .particle { position: absolute; width: 8px; height: 8px; background: #ffa502; border-radius: 50%; animation: pFly 0.6s forwards; z-index: 9; }
-        @keyframes pFly { to { opacity: 0; transform: translate(-30px, -50px); } }
+        #ui { position: absolute; top: 15px; width: 100%; display: flex; justify-content: space-between; padding: 0 20px; font-weight: bold; color: #535353; z-index: 20; pointer-events: none; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; z-index: 30; background: rgba(255,255,255,0.95); padding: 30px; border-radius: 15px; border: 3px solid #535353; }
     </style>
 </head>
 <body>
 
     <div id="game-container">
         <div id="ui">
-            <div id="evo-status">🐣 幼年體</div>
+            <div id="evo-status">🐣 檢查資源中...</div>
             <div id="score">SCORE: 00000</div>
         </div>
         <div id="dino"></div>
-        <div id="msg">
-            <h1 style="margin:0">GAME OVER</h1>
-            <p>點擊畫面重新開始</p>
-        </div>
+        <div id="msg"><h1>GAME OVER</h1><p>點擊畫面重啟</p></div>
     </div>
 
 <script>
-    const container = document.getElementById('game-container');
     const dinoEl = document.getElementById('dino');
     const scoreEl = document.getElementById('score');
     const statusEl = document.getElementById('evo-status');
     const msgEl = document.getElementById('msg');
+    const container = document.getElementById('game-container');
 
-    // --- 圖片預載入邏輯 ---
-    const imgAssets = {
-        dino: './dino.png',
-        cactus: './cactus.png',
-        bird: './bird.png'
-    };
+    // --- 終極路徑修復邏輯 ---
     const images = {};
-    Object.entries(imgAssets).forEach(([key, src]) => {
+    const imgNames = ['dino', 'cactus', 'bird'];
+    
+    // 三重保險：嘗試絕對路徑、相對路徑、以及強制刷新快取
+    imgNames.forEach(name => {
         const img = new Image();
-        img.src = src;
-        img.onload = () => { 
-            images[key] = src;
-            if(key === 'dino') dinoEl.style.backgroundImage = `url(${src})`;
+        // 加上隨機參數避免 GitHub Pages 快取到舊的 404 頁面
+        const testSrc = `./${name}.png?v=${Date.now()}`; 
+        img.src = testSrc;
+        
+        img.onload = () => {
+            console.log(`✅ 成功載入: ${name}`);
+            images[name] = testSrc;
+            if (name === 'dino') dinoEl.style.backgroundImage = `url(${testSrc})`;
+            statusEl.innerText = '🐣 幼年體';
+        };
+        img.onerror = () => {
+            console.error(`❌ 載入失敗: ${name}，請確認根目錄是否有 ${name}.png`);
+            statusEl.innerText = '🐣 幼年體 (色塊模式)';
         };
     });
 
+    // --- 遊戲邏輯 (取消無敵) ---
     let isRun = true, score = 0, speed = 6, evo = 'normal';
     let dino = { x: 50, y: 0, vy: 0, w: 40, h: 44, jump: false };
     let obs = [], timer = 0, cTimer = 0;
 
     const handleAction = (e) => {
         if (e && e.cancelable) e.preventDefault();
-        if (!isRun) {
-            location.reload(); // 最穩定的重啟方式
-        } else if (!dino.jump) {
-            dino.vy = -17;
-            dino.jump = true;
-        }
+        if (!isRun) location.reload();
+        else if (!dino.jump) { dino.vy = -17; dino.jump = true; }
     };
 
     window.addEventListener('touchstart', handleAction, {passive: false});
     window.addEventListener('mousedown', handleAction);
-    window.addEventListener('keydown', (e) => { if(e.code === 'Space' || e.code === 'ArrowUp') handleAction(e); });
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space') handleAction(e); });
 
     function gameLoop() {
         if (!isRun) return;
@@ -143,31 +113,19 @@
         let s = Math.floor(score/5);
         scoreEl.innerText = `SCORE: ${s.toString().padStart(5, '0')}`;
         
-        // 進化邏輯 (取消無敵狀態)
         if (s >= 1000 && evo !== 'flame') {
             evo = 'flame'; dinoEl.className = 'evo-flame'; 
-            statusEl.innerText = '🔥 火焰型態 (無無敵)'; statusEl.style.color = '#ff4757';
+            statusEl.innerText = '🔥 火焰型態 (無無敵)';
         } else if (s >= 500 && s < 1000 && evo !== 'gold') {
             evo = 'gold'; dinoEl.className = 'evo-gold'; 
-            statusEl.innerText = '✨ 金色覺醒'; statusEl.style.color = '#d4af37';
+            statusEl.innerText = '✨ 金色覺醒';
         }
-
-        if (evo === 'flame' && score % 4 === 0) spawnParticle();
 
         updateObstacles();
         updateClouds();
-        
-        // 任何模式都會進行碰撞偵測
-        checkCollision();
+        checkCollision(); // 永遠執行碰撞偵測
 
         requestAnimationFrame(gameLoop);
-    }
-
-    function spawnParticle() {
-        const p = document.createElement('div'); p.className = 'particle';
-        p.style.left = (dino.x + 10 + Math.random()*20)+'px';
-        p.style.bottom = (dino.y + 10 + Math.random()*20)+'px';
-        container.appendChild(p); setTimeout(() => p.remove(), 600);
     }
 
     function updateObstacles() {
@@ -179,18 +137,18 @@
 
         if (++timer > (100 - speed)) {
             let isBird = Math.random() > 0.75;
-            let w = isBird ? 45 : 30, h = isBird ? 35 : 50, y = isBird ? 85 : 0;
             const el = document.createElement('div');
             el.className = 'obstacle' + (isBird ? ' bird' : '');
-            el.style.width = w+'px'; el.style.height = h+'px';
-            el.style.left = '100%'; el.style.bottom = y+'px';
+            el.style.width = (isBird ? 45 : 30) + 'px';
+            el.style.height = (isBird ? 35 : 50) + 'px';
+            el.style.left = '100%';
+            el.style.bottom = (isBird ? 85 : 0) + 'px';
             
-            // 設定障礙物圖片
-            const imgKey = isBird ? 'bird' : 'cactus';
-            if (images[imgKey]) el.style.backgroundImage = `url(${images[imgKey]})`;
+            const name = isBird ? 'bird' : 'cactus';
+            if (images[name]) el.style.backgroundImage = `url(${images[name]})`;
             
             container.appendChild(el);
-            obs.push({ el, x: container.offsetWidth, y, w, h });
+            obs.push({ el, x: container.offsetWidth, y: isBird ? 85 : 0, w: isBird ? 45 : 30, h: isBird ? 35 : 50 });
             timer = 0;
         }
         if (score % 1000 === 0) speed += 0.5;
@@ -199,19 +157,16 @@
     function updateClouds() {
         if (++cTimer > 120) {
             const c = document.createElement('div'); c.className = 'cloud';
-            const colors = ['#ffffff', '#fff9c4', '#e1f5fe', '#f3e5f5'];
-            let w = 70 + Math.random() * 70;
-            c.style.width = w + 'px'; c.style.height = (w * 0.4) + 'px';
-            c.style.background = colors[Math.floor(Math.random()*4)];
+            c.style.width = '80px'; c.style.height = '30px';
+            c.style.background = '#fff';
             c.style.top = (30 + Math.random() * 100) + 'px';
-            c.style.animationDuration = (12 + Math.random() * 15) + 's';
+            c.style.animationDuration = '20s';
             container.appendChild(c); cTimer = 0;
-            setTimeout(() => { if(c.parentNode) c.remove(); }, 27000);
+            setTimeout(() => c.remove(), 21000);
         }
     }
 
     function checkCollision() {
-        // 判定框調整
         let d = { l: dino.x + 10, r: dino.x + dino.w - 10, t: dino.y + dino.h - 8, b: dino.y + 5 };
         for (let o of obs) {
             if (d.r > o.x && d.l < o.x + o.w && d.t > o.y && d.b < o.y + o.h) {
