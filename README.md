@@ -13,20 +13,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <style>
-        /* 基礎樣式：確保畫面不是白的 */
         * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { 
             margin: 0; padding: 0; 
             display: flex; justify-content: center; align-items: center; 
-            height: 100vh; background-color: #e0f7fa; /* 淺藍背景 */
+            height: 100vh; background-color: #e0f7fa; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden; touch-action: none;
         }
 
-        /* 遊戲容器 */
         #game-container { 
             position: relative; 
-            width: 100vw; height: 100vh; /* 手機版改為全螢幕 */
+            width: 100vw; height: 100vh; 
             max-width: 800px; max-height: 400px;
             background-color: white; 
             border-bottom: 4px solid #535353; 
@@ -38,21 +36,24 @@
         /* 恐龍實體 */
         #dino { 
             position: absolute; bottom: 0; left: 50px; 
-            width: 40px; height: 44px; 
-            background-color: #535353; border-radius: 4px; 
-            z-index: 10; transition: background 0.3s, transform 0.2s;
+            width: 44px; height: 47px; 
+            background-color: #535353; /* 圖片失效時的保險色 */
+            background-size: contain; background-repeat: no-repeat;
+            z-index: 10; transition: filter 0.3s;
         }
-        #dino.evo-gold { background-color: #FFD700; box-shadow: 0 0 20px #FFD700; }
-        #dino.evo-flame { 
-            background-color: #ff4757; 
-            box-shadow: 0 0 30px #ff6b81; 
-            animation: flame 0.5s infinite alternate; 
+        
+        /* 進化濾鏡 (取消無敵，僅視覺改變) */
+        .evo-gold { filter: drop-shadow(0 0 10px #FFD700) sepia(0.5) brightness(1.2); }
+        .evo-flame { 
+            filter: drop-shadow(0 0 15px #ff4757) hue-rotate(-20deg) saturate(2); 
+            animation: pulse 0.5s infinite alternate;
         }
-        @keyframes flame { from { transform: scale(1); } to { transform: scale(1.1); } }
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
 
         /* 障礙物與雲 */
-        .obstacle { position: absolute; bottom: 0; z-index: 5; background-color: #535353; }
-        .bird { bottom: 80px; border-radius: 50% 50% 0 0; }
+        .obstacle { position: absolute; bottom: 0; z-index: 5; background-color: #535353; background-size: contain; background-repeat: no-repeat; }
+        .bird { bottom: 85px; }
+        
         .cloud { 
             position: absolute; border-radius: 50px; z-index: 1; 
             opacity: 0.6; animation: drift linear infinite; 
@@ -71,7 +72,7 @@
             background: rgba(255,255,255,0.95); padding: 30px; 
             border-radius: 15px; border: 3px solid #535353;
         }
-        .particle { position: absolute; width: 8px; height: 8px; background: #ffa502; border-radius: 50%; animation: pFly 0.6s forwards; }
+        .particle { position: absolute; width: 8px; height: 8px; background: #ffa502; border-radius: 50%; animation: pFly 0.6s forwards; z-index: 9; }
         @keyframes pFly { to { opacity: 0; transform: translate(-30px, -50px); } }
     </style>
 </head>
@@ -96,22 +97,36 @@
     const statusEl = document.getElementById('evo-status');
     const msgEl = document.getElementById('msg');
 
+    // --- 圖片預載入邏輯 ---
+    const imgAssets = {
+        dino: './dino.png',
+        cactus: './cactus.png',
+        bird: './bird.png'
+    };
+    const images = {};
+    Object.entries(imgAssets).forEach(([key, src]) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => { 
+            images[key] = src;
+            if(key === 'dino') dinoEl.style.backgroundImage = `url(${src})`;
+        };
+    });
+
     let isRun = true, score = 0, speed = 6, evo = 'normal';
     let dino = { x: 50, y: 0, vy: 0, w: 40, h: 44, jump: false };
     let obs = [], timer = 0, cTimer = 0;
 
-    // 核心動作：跳躍或重啟
     const handleAction = (e) => {
-        if (e.cancelable) e.preventDefault();
+        if (e && e.cancelable) e.preventDefault();
         if (!isRun) {
-            reset();
+            location.reload(); // 最穩定的重啟方式
         } else if (!dino.jump) {
-            dino.vy = -17; // 稍微調強跳躍力
+            dino.vy = -17;
             dino.jump = true;
         }
     };
 
-    // 監聽點擊與鍵盤
     window.addEventListener('touchstart', handleAction, {passive: false});
     window.addEventListener('mousedown', handleAction);
     window.addEventListener('keydown', (e) => { if(e.code === 'Space' || e.code === 'ArrowUp') handleAction(e); });
@@ -119,20 +134,19 @@
     function gameLoop() {
         if (!isRun) return;
 
-        // 1. 物理運動
-        dino.vy += 0.85; // 重力
+        dino.vy += 0.85;
         dino.y -= dino.vy;
         if (dino.y <= 0) { dino.y = 0; dino.vy = 0; dino.jump = false; }
         dinoEl.style.bottom = dino.y + 'px';
 
-        // 2. 分數與進化
         score++;
         let s = Math.floor(score/5);
         scoreEl.innerText = `SCORE: ${s.toString().padStart(5, '0')}`;
         
+        // 進化邏輯 (取消無敵狀態)
         if (s >= 1000 && evo !== 'flame') {
             evo = 'flame'; dinoEl.className = 'evo-flame'; 
-            statusEl.innerText = '🔥 火焰模式 (無敵)'; statusEl.style.color = '#ff4757';
+            statusEl.innerText = '🔥 火焰型態 (無無敵)'; statusEl.style.color = '#ff4757';
         } else if (s >= 500 && s < 1000 && evo !== 'gold') {
             evo = 'gold'; dinoEl.className = 'evo-gold'; 
             statusEl.innerText = '✨ 金色覺醒'; statusEl.style.color = '#d4af37';
@@ -140,12 +154,11 @@
 
         if (evo === 'flame' && score % 4 === 0) spawnParticle();
 
-        // 3. 障礙物與雲朵生成
         updateObstacles();
         updateClouds();
         
-        // 4. 碰撞偵測 (火焰模式略過)
-        if (evo !== 'flame') checkCollision();
+        // 任何模式都會進行碰撞偵測
+        checkCollision();
 
         requestAnimationFrame(gameLoop);
     }
@@ -166,16 +179,21 @@
 
         if (++timer > (100 - speed)) {
             let isBird = Math.random() > 0.75;
-            let w = isBird ? 45 : 25, h = isBird ? 35 : 50, y = isBird ? 85 : 0;
+            let w = isBird ? 45 : 30, h = isBird ? 35 : 50, y = isBird ? 85 : 0;
             const el = document.createElement('div');
             el.className = 'obstacle' + (isBird ? ' bird' : '');
             el.style.width = w+'px'; el.style.height = h+'px';
             el.style.left = '100%'; el.style.bottom = y+'px';
+            
+            // 設定障礙物圖片
+            const imgKey = isBird ? 'bird' : 'cactus';
+            if (images[imgKey]) el.style.backgroundImage = `url(${images[imgKey]})`;
+            
             container.appendChild(el);
             obs.push({ el, x: container.offsetWidth, y, w, h });
             timer = 0;
         }
-        if (score % 800 === 0) speed += 0.4;
+        if (score % 1000 === 0) speed += 0.5;
     }
 
     function updateClouds() {
@@ -188,12 +206,13 @@
             c.style.top = (30 + Math.random() * 100) + 'px';
             c.style.animationDuration = (12 + Math.random() * 15) + 's';
             container.appendChild(c); cTimer = 0;
-            setTimeout(() => c.remove(), 27000);
+            setTimeout(() => { if(c.parentNode) c.remove(); }, 27000);
         }
     }
 
     function checkCollision() {
-        let d = { l: dino.x + 8, r: dino.x + dino.w - 8, t: dino.y + dino.h - 5, b: dino.y };
+        // 判定框調整
+        let d = { l: dino.x + 10, r: dino.x + dino.w - 10, t: dino.y + dino.h - 8, b: dino.y + 5 };
         for (let o of obs) {
             if (d.r > o.x && d.l < o.x + o.w && d.t > o.y && d.b < o.y + o.h) {
                 isRun = false; msgEl.style.display = 'block';
@@ -201,15 +220,6 @@
         }
     }
 
-    function reset() {
-        score = 0; speed = 6; evo = 'normal'; dino.y = 0; dino.vy = 0; isRun = true;
-        msgEl.style.display = 'none'; dinoEl.className = ''; 
-        statusEl.innerText = '🐣 幼年體'; statusEl.style.color = '#535353';
-        obs.forEach(o => o.el.remove()); obs = [];
-        gameLoop();
-    }
-
-    // 啟動
     gameLoop();
 </script>
 </body>
